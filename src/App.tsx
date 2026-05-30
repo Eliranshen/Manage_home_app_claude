@@ -208,37 +208,42 @@ function WeekNav({
   onToday: () => void
 }) {
   return (
-    <div className="flex items-center justify-center gap-0.5" dir="ltr">
+    <div className="flex items-center w-full" dir="ltr">
+      {/* Left arrow — fixed position */}
       <button
-        onClick={onPrev}
-        className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
-        aria-label="שבוע הקודם"
+        onClick={onNext}
+        className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
+        aria-label="שבוע הבא"
       >
         ‹
       </button>
-      <div className="flex items-center gap-1.5 px-1">
-        <span className="text-sm text-gray-300 font-medium">
+
+      {/* Center label — takes all remaining space, text always centered */}
+      <div className="flex-1 flex items-center justify-center gap-1.5 min-w-0">
+        <span className="text-sm text-gray-300 font-medium truncate">
           {getWeekLabel(weekOffset, days)}
         </span>
         {loading && (
           <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
         )}
+        {weekOffset !== 0 && (
+          <button
+            onClick={onToday}
+            className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-400 border border-indigo-700/50 transition-colors"
+          >
+            היום
+          </button>
+        )}
       </div>
+
+      {/* Right arrow — fixed position */}
       <button
-        onClick={onNext}
-        className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
-        aria-label="שבוע הבא"
+        onClick={onPrev}
+        className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
+        aria-label="שבוע הקודם"
       >
         ›
       </button>
-      {weekOffset !== 0 && (
-        <button
-          onClick={onToday}
-          className="mr-1 text-xs px-2 py-0.5 rounded-full bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-400 border border-indigo-700/50 transition-colors"
-        >
-          היום
-        </button>
-      )}
     </div>
   )
 }
