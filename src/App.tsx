@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { useCalendarEvents } from './hooks/useCalendarEvents'
 import { useInstallPrompt } from './hooks/useInstallPrompt'
@@ -22,16 +22,27 @@ function isSameDay(a: Date, b: Date): boolean {
   )
 }
 
-function getWeekDays(): Date[] {
+function getWeekDays(weekOffset = 0): Date[] {
   const today = new Date()
   const sunday = new Date(today)
-  sunday.setDate(today.getDate() - today.getDay())
+  sunday.setDate(today.getDate() - today.getDay() + weekOffset * 7)
   sunday.setHours(0, 0, 0, 0)
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(sunday)
     d.setDate(sunday.getDate() + i)
     return d
   })
+}
+
+function getWeekLabel(weekOffset: number, days: Date[]): string {
+  const fmtShort = (d: Date) => d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })
+  const fmtFull  = (d: Date) => d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: 'numeric' })
+  // Show year only on the end date to keep the label compact
+  const range = `${fmtShort(days[0])} – ${fmtFull(days[6])}`
+  if (weekOffset === 0) return `השבוע · ${range}`
+  if (weekOffset === 1) return `שבוע הבא · ${range}`
+  if (weekOffset === -1) return `שבוע שעבר · ${range}`
+  return range
 }
 
 function formatWeekday(day: Date): string {
@@ -49,6 +60,27 @@ function formatTime(event: CalendarEvent): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatTimeRange(event: CalendarEvent): string {
+  if (event.start.date) return 'כל היום'
+  if (!event.start.dateTime) return ''
+  const fmt = (s: string) =>
+    new Date(s).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+  const start = fmt(event.start.dateTime)
+  if (!event.end.dateTime) return start
+  return `${start} – ${fmt(event.end.dateTime)}`
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim()
 }
 
 // Detects whether an event fell through to the default owner with no explicit name match ("כללי").
@@ -158,19 +190,135 @@ function FilterBar({
   )
 }
 
+// ── WeekNav ───────────────────────────────────────────────────────────────────
+
+function WeekNav({
+  weekOffset,
+  days,
+  loading,
+  onPrev,
+  onNext,
+  onToday,
+}: {
+  weekOffset: number
+  days: Date[]
+  loading: boolean
+  onPrev: () => void
+  onNext: () => void
+  onToday: () => void
+}) {
+  return (
+    <div className="flex items-center justify-center gap-0.5" dir="ltr">
+      <button
+        onClick={onPrev}
+        className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
+        aria-label="שבוע הקודם"
+      >
+        ‹
+      </button>
+      <div className="flex items-center gap-1.5 px-1">
+        <span className="text-sm text-gray-300 font-medium">
+          {getWeekLabel(weekOffset, days)}
+        </span>
+        {loading && (
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
+        )}
+      </div>
+      <button
+        onClick={onNext}
+        className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
+        aria-label="שבוע הבא"
+      >
+        ›
+      </button>
+      {weekOffset !== 0 && (
+        <button
+          onClick={onToday}
+          className="mr-1 text-xs px-2 py-0.5 rounded-full bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-400 border border-indigo-700/50 transition-colors"
+        >
+          היום
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── EventDetailModal ──────────────────────────────────────────────────────────
+
+function EventDetailModal({ event, person, onClose }: { event: CalendarEvent; person: Person; onClose: () => void }) {
+  const description = event.description ? stripHtml(event.description) : null
+  const hasExtra = !!(description || event.location)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div
+        className="relative w-full max-w-2xl bg-gray-900 rounded-t-2xl border-t border-gray-700 p-5 pb-10"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Title row: dot + title + close button */}
+        <div className="flex items-start gap-3 mb-3">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <span
+              className="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: person.color }}
+            />
+            <h2 className="text-base font-semibold text-gray-100 leading-snug">
+              {event.summary ?? '(ללא כותרת)'}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 text-gray-500 hover:text-gray-300 text-lg leading-none mt-0.5 px-1"
+            aria-label="סגור"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Time */}
+        <p className="text-sm text-gray-400 mb-3 mr-5">{formatTimeRange(event)}</p>
+
+        {/* Location */}
+        {event.location && (
+          <p className="text-sm text-gray-400 mb-2 mr-5">
+            <span className="text-gray-600 ml-1">📍</span>{event.location}
+          </p>
+        )}
+
+        {/* Description */}
+        {description && (
+          <p className="text-sm text-gray-300 whitespace-pre-wrap mr-5 mt-3 leading-relaxed">
+            {description}
+          </p>
+        )}
+
+        {!hasExtra && (
+          <p className="text-sm text-gray-600 italic mr-5">אין פרטים נוספים לאירוע זה</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── AgendaEventRow ────────────────────────────────────────────────────────────
 
 function AgendaEventRow({
   event,
   person,
   isGeneral,
+  onClick,
 }: {
   event: CalendarEvent
   person: Person
   isGeneral: boolean
+  onClick: () => void
 }) {
   return (
-    <div className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-800/40 transition-colors">
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 py-2.5 px-3 hover:bg-gray-800/40 active:bg-gray-800/60 transition-colors text-right"
+    >
       {/* Time — rightmost (RTL start) */}
       <span className="text-xs text-gray-500 shrink-0 w-16 text-right tabular-nums">
         {formatTime(event)}
@@ -184,7 +332,7 @@ function AgendaEventRow({
         {isGeneral && <GeneralBadge />}
         <PersonBadge person={person} />
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -193,9 +341,11 @@ function AgendaEventRow({
 function DaySection({
   day,
   events,
+  onEventClick,
 }: {
   day: Date
   events: Array<{ event: CalendarEvent; person: Person; isGeneral: boolean }>
+  onEventClick: (event: CalendarEvent, person: Person) => void
 }) {
   const today = isSameDay(new Date(), day)
 
@@ -242,6 +392,7 @@ function DaySection({
               event={event}
               person={person}
               isGeneral={isGeneral}
+              onClick={() => onEventClick(event, person)}
             />
           ))
         )}
@@ -258,15 +409,22 @@ function App() {
 
   const { canInstall, install } = useInstallPrompt()
 
+  const [weekOffset, setWeekOffset] = useState(0)
+
   const { events, loading, error: calError, refetch } = useCalendarEvents({
     isAuthorized,
     getAccessToken,
     onTokenExpired: signOut,
+    weekOffset,
   })
 
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<{ event: CalendarEvent; person: Person } | null>(null)
 
-  const weekDays = useMemo(() => getWeekDays(), [])
+  const weekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset])
+
+  // Scroll to top when switching weeks
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [weekOffset])
 
   const classifiedEvents = useMemo(
     () =>
@@ -360,23 +518,39 @@ function App() {
           </div>
         )}
 
-        {/* Loading */}
-        {isAuthorized && loading && (
-          <p className="text-gray-500 text-sm animate-pulse">טוען אירועים...</p>
-        )}
-
         {/* Weekly agenda */}
-        {isAuthorized && !loading && (
+        {isAuthorized && (
           <>
+            <WeekNav
+              weekOffset={weekOffset}
+              days={weekDays}
+              loading={loading}
+              onPrev={() => setWeekOffset(o => o - 1)}
+              onNext={() => setWeekOffset(o => o + 1)}
+              onToday={() => setWeekOffset(0)}
+            />
             <FilterBar activeFilter={activeFilter} onFilter={setActiveFilter} />
-            <div className="flex flex-col gap-3">
+            <div className={`flex flex-col gap-3 transition-opacity duration-200 ${loading ? 'opacity-50' : 'opacity-100'}`}>
               {dayGroups.map(({ day, events: dayEvents }) => (
-                <DaySection key={day.toISOString()} day={day} events={dayEvents} />
+                <DaySection
+                  key={day.toISOString()}
+                  day={day}
+                  events={dayEvents}
+                  onEventClick={(ev, p) => setSelectedEvent({ event: ev, person: p })}
+                />
               ))}
             </div>
           </>
         )}
       </main>
+
+      {selectedEvent && (
+        <EventDetailModal
+          event={selectedEvent.event}
+          person={selectedEvent.person}
+          onClose={() => setSelectedEvent(null)}
+        />
+      )}
     </div>
   )
 }

@@ -19,7 +19,7 @@ PWA משפחתי לניהול הבית, בעברית, RTL מלא, dark mode.
 - **היומן הוא מקור האמת** — האפליקציה read-only, לא כותבת ליומן.
 - **OAuth בצד הלקוח** עם `initTokenClient`, scope `calendar.readonly`.
   ה-Client ID נקרא מ-`import.meta.env.VITE_GOOGLE_CLIENT_ID`.
-- **Token בזיכרון בלבד, לא ב-localStorage.** רענון משתמש ב-re-auth שקט (`prompt: ''`).
+- **Token נשמר ב-localStorage** (`mha_token`) לצורך התמדת התחברות. רענון שקט אוטומטי (`prompt: ''`) 5 דקות לפני פקיעה.
 - **סיווג לפי שם בכותרת האירוע**, לא לפי יומנים נפרדים.
 
 ## סיווג אירועים
