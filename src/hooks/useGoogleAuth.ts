@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 
-type AuthStatus = 'idle' | 'loading' | 'authorized' | 'error'
+type AuthStatus = 'idle' | 'loading' | 'authorized' | 'error' | 'refreshing'
+// 'refreshing' = silently attempting re-auth; user was previously logged in
 
 interface TokenState {
   accessToken: string
@@ -10,6 +11,7 @@ interface TokenState {
 // ── localStorage helpers ───────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'mha_token'
+const HAD_AUTH_KEY = 'mha_had_auth' // persists across token expiry; cleared only on explicit logout
 
 // Migrate previous sessions that only stored a flag (old 'mha_auth' key)
 localStorage.removeItem('mha_auth')
@@ -38,20 +40,48 @@ function clearToken(): void {
   localStorage.removeItem(STORAGE_KEY)
 }
 
+function hadPreviousAuth(): boolean {
+  return localStorage.getItem(HAD_AUTH_KEY) === '1'
+}
+
+function markHadAuth(): void {
+  try { localStorage.setItem(HAD_AUTH_KEY, '1') } catch {}
+}
+
+function clearHadAuth(): void {
+  localStorage.removeItem(HAD_AUTH_KEY)
+}
+
 // ── hook ───────────────────────────────────────────────────────────────────────
 
 export function useGoogleAuth() {
   const tokenRef = useRef<TokenState | null>(null)
   const clientRef = useRef<google.accounts.oauth2.TokenClient | null>(null)
+  const silentAttemptedRef = useRef(false)
+  const statusRef = useRef<AuthStatus>('idle')
 
-  // Restore token from localStorage on first render — calendar shows immediately
-  // without waiting for GIS or any network request.
+  // Restore token on first render. If the token is expired but the user was
+  // previously logged in, start in 'refreshing' to attempt silent re-auth
+  // before ever showing the login screen.
   const [status, setStatus] = useState<AuthStatus>(() => {
     const stored = loadStoredToken()
-    if (stored) tokenRef.current = stored
-    return stored ? 'authorized' : 'idle'
+    if (stored) {
+      tokenRef.current = stored
+      statusRef.current = 'authorized'
+      return 'authorized'
+    }
+    if (hadPreviousAuth()) {
+      statusRef.current = 'refreshing'
+      return 'refreshing'
+    }
+    return 'idle'
   })
   const [error, setError] = useState<string | null>(null)
+
+  const setStatusTracked = useCallback((s: AuthStatus) => {
+    statusRef.current = s
+    setStatus(s)
+  }, [])
 
   const getClient = useCallback((): google.accounts.oauth2.TokenClient => {
     if (clientRef.current) return clientRef.current
@@ -64,7 +94,7 @@ export function useGoogleAuth() {
           clearToken()
           tokenRef.current = null
           setError(response.error_description ?? response.error)
-          setStatus('error')
+          setStatusTracked('error')
           return
         }
         const t: TokenState = {
@@ -73,29 +103,53 @@ export function useGoogleAuth() {
         }
         tokenRef.current = t
         saveToken(t)
+        markHadAuth()
         setError(null)
-        setStatus('authorized')
+        setStatusTracked('authorized')
       },
       error_callback: (err) => {
-        // Closed / blocked popup during a silent background refresh.
-        // Only fall back to idle if we no longer have a valid stored token.
+        // Closed / blocked popup — fall back gracefully without showing an error.
         if (err.type === 'popup_closed' || err.type === 'popup_failed_to_open') {
-          if (!loadStoredToken()) setStatus('idle')
+          if (!loadStoredToken()) setStatusTracked('idle')
         } else {
           clearToken()
           tokenRef.current = null
           setError(err.message ?? err.type)
-          setStatus('error')
+          setStatusTracked('error')
         }
       },
     })
 
     return clientRef.current
-  }, [])
+  }, [setStatusTracked])
+
+  // On startup (or after a visibilitychange reset): if status is 'refreshing',
+  // attempt a silent re-auth. On Android Chrome this completes without any UI.
+  // On iOS it may show a brief Google popup but avoids a full manual login.
+  useEffect(() => {
+    if (status !== 'refreshing' || silentAttemptedRef.current) return
+    silentAttemptedRef.current = true
+
+    let cancelled = false
+
+    // Fallback: if silent re-auth doesn't resolve within 3s, unlock the login button.
+    const fallback = setTimeout(() => {
+      if (!cancelled && statusRef.current === 'refreshing') setStatusTracked('idle')
+    }, 3000)
+
+    const attempt = () => {
+      if (cancelled) return
+      if (typeof google === 'undefined' || !google.accounts?.oauth2) {
+        setTimeout(attempt, 250)
+        return
+      }
+      getClient().requestAccessToken({ prompt: '' })
+    }
+    attempt()
+    return () => { cancelled = true; clearTimeout(fallback) }
+  }, [status, getClient, setStatusTracked])
 
   // Proactive silent refresh — fires 5 minutes before the stored token expires.
-  // On Android/Chrome this succeeds silently. On iOS it may open a brief popup,
-  // but only once every ~55 minutes, not on every app open.
   useEffect(() => {
     if (status !== 'authorized' || !tokenRef.current) return
 
@@ -107,7 +161,6 @@ export function useGoogleAuth() {
     }
 
     if (msUntilRefresh <= 0) {
-      // Token already near expiry (e.g. app was backgrounded) — refresh now
       doRefresh()
       return
     }
@@ -116,22 +169,54 @@ export function useGoogleAuth() {
     return () => clearTimeout(timer)
   }, [status, getClient])
 
+  // When the app comes back to the foreground (e.g. switching from another app),
+  // check if the token needs refreshing and attempt silently.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') return
+
+      // Token exists but near expiry → silent background refresh
+      if (tokenRef.current) {
+        const msLeft = tokenRef.current.expiresAt - Date.now()
+        if (msLeft < 5 * 60 * 1000 && typeof google !== 'undefined' && google.accounts?.oauth2) {
+          getClient().requestAccessToken({ prompt: '' })
+        }
+        return
+      }
+
+      // No token but we know the user was logged in → attempt silent re-auth
+      if (
+        hadPreviousAuth() &&
+        statusRef.current !== 'loading' &&
+        statusRef.current !== 'refreshing' &&
+        statusRef.current !== 'authorized'
+      ) {
+        silentAttemptedRef.current = false
+        setStatusTracked('refreshing')
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [getClient, setStatusTracked])
+
   const signIn = useCallback(() => {
-    setStatus('loading')
+    setStatusTracked('loading')
     setError(null)
     getClient().requestAccessToken()
-  }, [getClient])
+  }, [getClient, setStatusTracked])
 
   const signOut = useCallback(() => {
     const token = tokenRef.current?.accessToken
     tokenRef.current = null
     clearToken()
-    setStatus('idle')
+    clearHadAuth()
+    setStatusTracked('idle')
     setError(null)
     if (token && typeof google !== 'undefined') {
       google.accounts.oauth2.revoke(token, () => {})
     }
-  }, [])
+  }, [setStatusTracked])
 
   const getAccessToken = useCallback((): string | null => {
     const t = tokenRef.current
@@ -139,11 +224,11 @@ export function useGoogleAuth() {
     if (Date.now() >= t.expiresAt) {
       clearToken()
       tokenRef.current = null
-      setStatus('idle')
+      setStatusTracked('idle')
       return null
     }
     return t.accessToken
-  }, [])
+  }, [setStatusTracked])
 
   const isAuthorized =
     status === 'authorized' &&

@@ -45,3 +45,66 @@ export async function fetchWeekEvents(accessToken: string, weekOffset = 0): Prom
   const data: EventsResponse = await res.json()
   return data.items ?? []
 }
+
+export async function fetchMonthEvents(accessToken: string, monthOffset = 0): Promise<CalendarEvent[]> {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
+  const end = new Date(now.getFullYear(), now.getMonth() + monthOffset + 1, 1)
+
+  const params = new URLSearchParams({
+    timeMin: start.toISOString(),
+    timeMax: end.toISOString(),
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    maxResults: '500',
+  })
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  )
+
+  if (res.status === 401) throw new AuthExpiredError('token expired')
+  if (!res.ok) throw new Error(`Calendar API error ${res.status}`)
+
+  const data: EventsResponse = await res.json()
+  return data.items ?? []
+}
+
+export interface SearchEventsResult {
+  events: CalendarEvent[]
+  nextPageToken?: string
+}
+
+export async function searchEvents(
+  accessToken: string,
+  query: string,
+  pageToken?: string,
+): Promise<SearchEventsResult> {
+  const now = new Date()
+  const timeMin = new Date(now)
+  timeMin.setMonth(now.getMonth() - 6)
+  const timeMax = new Date(now)
+  timeMax.setFullYear(now.getFullYear() + 1)
+
+  const params = new URLSearchParams({
+    q: query,
+    timeMin: timeMin.toISOString(),
+    timeMax: timeMax.toISOString(),
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    maxResults: '50',
+  })
+  if (pageToken) params.set('pageToken', pageToken)
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  )
+
+  if (res.status === 401) throw new AuthExpiredError('token expired')
+  if (!res.ok) throw new Error(`Calendar API error ${res.status}`)
+
+  const data: EventsResponse & { nextPageToken?: string } = await res.json()
+  return { events: data.items ?? [], nextPageToken: data.nextPageToken }
+}

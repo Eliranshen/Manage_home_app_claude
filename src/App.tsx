@@ -1,6 +1,8 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { useCalendarEvents } from './hooks/useCalendarEvents'
+import { useMonthEvents } from './hooks/useMonthEvents'
+import { useSearchEvents } from './hooks/useSearchEvents'
 import { useInstallPrompt } from './hooks/useInstallPrompt'
 import { classifyEvent } from './utils/classifyEvent'
 import type { CalendarEvent } from './services/calendarApi'
@@ -22,6 +24,23 @@ function isSameDay(a: Date, b: Date): boolean {
   )
 }
 
+// Returns true if `day` (local midnight) falls within the event's duration.
+// All-day events: range is [start.date, end.date) — end is exclusive per Google Calendar spec.
+// Timed events: match only the calendar day they begin on.
+function eventCoversDay(event: CalendarEvent, day: Date): boolean {
+  if (event.start.date) {
+    const start = new Date(event.start.date + 'T00:00:00')
+    const end = event.end?.date
+      ? new Date(event.end.date + 'T00:00:00')
+      : new Date(start.getTime() + 86400000)
+    return day >= start && day < end
+  }
+  if (event.start.dateTime) {
+    return isSameDay(new Date(event.start.dateTime), day)
+  }
+  return false
+}
+
 function getWeekDays(weekOffset = 0): Date[] {
   const today = new Date()
   const sunday = new Date(today)
@@ -32,6 +51,28 @@ function getWeekDays(weekOffset = 0): Date[] {
     d.setDate(sunday.getDate() + i)
     return d
   })
+}
+
+// Computes a new weekOffset by shifting the currently viewed week's Sunday
+// forward/backward by `months` calendar months.
+function offsetByPeriod(weekOffset: number, months: number): number {
+  const today = new Date()
+  const sunday = new Date(today)
+  sunday.setDate(today.getDate() - today.getDay() + weekOffset * 7)
+  sunday.setHours(0, 0, 0, 0)
+
+  const target = new Date(sunday)
+  target.setMonth(target.getMonth() + months)
+
+  const targetSunday = new Date(target)
+  targetSunday.setDate(target.getDate() - target.getDay())
+  targetSunday.setHours(0, 0, 0, 0)
+
+  const baseSunday = new Date(today)
+  baseSunday.setDate(today.getDate() - today.getDay())
+  baseSunday.setHours(0, 0, 0, 0)
+
+  return Math.round((targetSunday.getTime() - baseSunday.getTime()) / (7 * 24 * 60 * 60 * 1000))
 }
 
 function getWeekLabel(weekOffset: number, days: Date[]): string {
@@ -96,6 +137,16 @@ function isGeneralEvent(title: string, person: Person): boolean {
       if (!w.endsWith(n)) return false
       return /^[ולשבכהמ]+$/.test(w.slice(0, w.length - n.length))
     })
+  )
+}
+
+// ── SearchIcon ────────────────────────────────────────────────────────────────
+
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
   )
 }
 
@@ -199,6 +250,10 @@ function WeekNav({
   onPrev,
   onNext,
   onToday,
+  onPrevMonth,
+  onNextMonth,
+  onPrevYear,
+  onNextYear,
 }: {
   weekOffset: number
   days: Date[]
@@ -206,44 +261,62 @@ function WeekNav({
   onPrev: () => void
   onNext: () => void
   onToday: () => void
+  onPrevMonth: () => void
+  onNextMonth: () => void
+  onPrevYear: () => void
+  onNextYear: () => void
 }) {
-  return (
-    <div className="flex items-center w-full" dir="ltr">
-      {/* Left arrow — fixed position */}
-      <button
-        onClick={onNext}
-        className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
-        aria-label="שבוע הבא"
-      >
-        ‹
-      </button>
+  const navBtn = 'shrink-0 text-xs px-2.5 py-1 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 active:bg-gray-700 transition-colors select-none'
 
-      {/* Center label — takes all remaining space, text always centered */}
-      <div className="flex-1 flex items-center justify-center gap-1.5 min-w-0">
-        <span className="text-sm text-gray-300 font-medium truncate">
-          {getWeekLabel(weekOffset, days)}
-        </span>
-        {loading && (
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
-        )}
-        {weekOffset !== 0 && (
-          <button
-            onClick={onToday}
-            className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-400 border border-indigo-700/50 transition-colors"
-          >
-            היום
-          </button>
-        )}
+  return (
+    <div className="flex flex-col gap-0.5" dir="ltr">
+      {/* Week row */}
+      <div className="flex items-center w-full">
+        <button
+          onClick={onNext}
+          className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
+          aria-label="שבוע הבא"
+        >
+          ‹
+        </button>
+
+        <div className="flex-1 flex items-center justify-center gap-1.5 min-w-0">
+          <span className="text-sm text-gray-300 font-medium truncate">
+            {getWeekLabel(weekOffset, days)}
+          </span>
+          {loading && (
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
+          )}
+          {weekOffset !== 0 && (
+            <button
+              onClick={onToday}
+              className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-400 border border-indigo-700/50 transition-colors"
+            >
+              היום
+            </button>
+          )}
+        </div>
+
+        <button
+          onClick={onPrev}
+          className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
+          aria-label="שבוע הקודם"
+        >
+          ›
+        </button>
       </div>
 
-      {/* Right arrow — fixed position */}
-      <button
-        onClick={onPrev}
-        className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
-        aria-label="שבוע הקודם"
-      >
-        ›
-      </button>
+      {/* Month / Year row */}
+      <div className="flex items-center justify-between px-1">
+        <div className="flex gap-1">
+          <button onClick={onNextYear}  className={navBtn} aria-label="שנה הבאה">‹‹ שנה</button>
+          <button onClick={onNextMonth} className={navBtn} aria-label="חודש הבא">‹ חודש</button>
+        </div>
+        <div className="flex gap-1">
+          <button onClick={onPrevMonth} className={navBtn} aria-label="חודש קודם">חודש ›</button>
+          <button onClick={onPrevYear}  className={navBtn} aria-label="שנה קודמת">שנה ››</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -255,10 +328,10 @@ function EventDetailModal({ event, person, onClose }: { event: CalendarEvent; pe
   const hasExtra = !!(description || event.location)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-full max-w-2xl bg-gray-900 rounded-t-2xl border-t border-gray-700 p-5 pb-10"
+        className="relative w-full max-w-sm bg-gray-900 rounded-2xl border border-gray-700 p-5"
         onClick={e => e.stopPropagation()}
       >
         {/* Title row: dot + title + close button */}
@@ -356,6 +429,7 @@ function DaySection({
 
   return (
     <div
+      id={today ? 'today-section' : undefined}
       className={`rounded-xl overflow-hidden ${
         today ? 'ring-2 ring-indigo-500' : 'ring-1 ring-gray-800'
       }`}
@@ -406,6 +480,324 @@ function DaySection({
   )
 }
 
+// ── SearchResults ─────────────────────────────────────────────────────────────
+
+function localDateKey(event: CalendarEvent): string {
+  const raw = event.start.date ?? event.start.dateTime
+  if (!raw) return ''
+  const d = new Date(event.start.date ? raw + 'T00:00:00' : raw)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function SearchResults({
+  events,
+  loading,
+  loadingMore,
+  hasMore,
+  loadMore,
+  onEventClick,
+}: {
+  events: Array<{ event: CalendarEvent; person: Person; isGeneral: boolean }>
+  loading: boolean
+  loadingMore: boolean
+  hasMore: boolean
+  loadMore: () => void
+  onEventClick: (event: CalendarEvent, person: Person) => void
+}) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (events.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-gray-600 text-sm">לא נמצאו אירועים</p>
+      </div>
+    )
+  }
+
+  // Group by local calendar date
+  const byDate = new Map<string, typeof events>()
+  for (const e of events) {
+    const key = localDateKey(e.event)
+    if (!key) continue
+    if (!byDate.has(key)) byDate.set(key, [])
+    byDate.get(key)!.push(e)
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-gray-600 px-1">
+        {events.length} אירועים{hasMore ? '+' : ''}
+      </p>
+
+      {Array.from(byDate.entries()).map(([key, dayEvents]) => {
+        const date = new Date(key + 'T00:00:00')
+        const today = isSameDay(date, new Date())
+        return (
+          <div
+            key={key}
+            className={`rounded-xl overflow-hidden ${today ? 'ring-2 ring-indigo-500' : 'ring-1 ring-gray-800'}`}
+          >
+            <div className={`flex items-center justify-between px-4 py-2.5 ${today ? 'bg-indigo-950/70' : 'bg-gray-900'}`}>
+              <div className="flex items-center gap-2">
+                <span className={`font-semibold text-sm ${today ? 'text-indigo-300' : 'text-gray-300'}`}>
+                  {date.toLocaleDateString('he-IL', { weekday: 'long' })}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {date.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: 'numeric' })}
+                </span>
+                {today && (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-medium leading-none">
+                    היום
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-gray-600">{dayEvents.length}</span>
+            </div>
+            <div className={`divide-y divide-gray-800/50 ${today ? 'bg-indigo-950/20' : 'bg-gray-900/40'}`}>
+              {dayEvents.map(({ event, person, isGeneral }) => (
+                <AgendaEventRow
+                  key={event.id}
+                  event={event}
+                  person={person}
+                  isGeneral={isGeneral}
+                  onClick={() => onEventClick(event, person)}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {hasMore && (
+        <button
+          onClick={loadMore}
+          disabled={loadingMore}
+          className="w-full py-3 text-sm text-indigo-400 hover:text-indigo-300 disabled:opacity-50 border border-gray-800 rounded-xl hover:bg-gray-900/40 transition-colors"
+        >
+          {loadingMore ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin inline-block" />
+              טוען...
+            </span>
+          ) : (
+            'טען עוד תוצאות ›'
+          )}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── Month helpers ─────────────────────────────────────────────────────────────
+
+const WEEKDAY_ABBR = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'] // Sun–Sat
+
+function buildMonthGrid(monthOffset: number): { days: Date[]; year: number; month: number } {
+  const now = new Date()
+  const target = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
+  const year = target.getFullYear()
+  const month = target.getMonth()
+  const firstDay = new Date(year, month, 1)
+  const startDay = new Date(year, month, 1 - firstDay.getDay())
+  const days: Date[] = []
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(startDay)
+    d.setDate(startDay.getDate() + i)
+    days.push(d)
+  }
+  return { days, year, month }
+}
+
+// ── MonthNav ──────────────────────────────────────────────────────────────────
+
+function MonthNav({
+  monthOffset,
+  loading,
+  onPrev,
+  onNext,
+  onToday,
+  onPrevYear,
+  onNextYear,
+}: {
+  monthOffset: number
+  loading: boolean
+  onPrev: () => void
+  onNext: () => void
+  onToday: () => void
+  onPrevYear: () => void
+  onNextYear: () => void
+}) {
+  const now = new Date()
+  const target = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
+  const label = target.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })
+  const navBtn = 'shrink-0 text-xs px-2.5 py-1 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 active:bg-gray-700 transition-colors select-none'
+
+  return (
+    <div className="flex flex-col gap-0.5" dir="ltr">
+      <div className="flex items-center w-full">
+        <button
+          onClick={onNext}
+          className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
+          aria-label="חודש הבא"
+        >
+          ‹
+        </button>
+        <div className="flex-1 flex items-center justify-center gap-1.5 min-w-0">
+          <span className="text-sm text-gray-300 font-medium truncate">{label}</span>
+          {loading && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />}
+          {monthOffset !== 0 && (
+            <button
+              onClick={onToday}
+              className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-400 border border-indigo-700/50 transition-colors"
+            >
+              היום
+            </button>
+          )}
+        </div>
+        <button
+          onClick={onPrev}
+          className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-800 active:bg-gray-700 text-gray-400 hover:text-gray-100 transition-colors text-2xl leading-none select-none"
+          aria-label="חודש קודם"
+        >
+          ›
+        </button>
+      </div>
+      <div className="flex items-center justify-between px-1">
+        <button onClick={onNextYear} className={navBtn} aria-label="שנה הבאה">‹‹ שנה</button>
+        <button onClick={onPrevYear} className={navBtn} aria-label="שנה קודמת">שנה ››</button>
+      </div>
+    </div>
+  )
+}
+
+// ── MonthView ─────────────────────────────────────────────────────────────────
+
+function MonthView({
+  monthOffset,
+  events,
+  loading,
+  onEventClick,
+}: {
+  monthOffset: number
+  events: Array<{ event: CalendarEvent; person: Person; isGeneral: boolean }>
+  loading: boolean
+  onEventClick: (event: CalendarEvent, person: Person) => void
+}) {
+  const { days, year, month } = useMemo(() => buildMonthGrid(monthOffset), [monthOffset])
+  const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d }, [])
+
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+
+  // Reset selected day when month changes
+  useEffect(() => { setSelectedDay(null) }, [monthOffset])
+
+  const selectedDayEvents = useMemo(() => {
+    if (!selectedDay) return []
+    return events
+      .filter(({ event }) => eventCoversDay(event, selectedDay))
+      .sort((a, b) => {
+        const aAllDay = !!a.event.start.date
+        const bAllDay = !!b.event.start.date
+        if (aAllDay && !bAllDay) return -1
+        if (!aAllDay && bAllDay) return 1
+        const da = getEventDate(a.event)
+        const db = getEventDate(b.event)
+        if (!da) return -1
+        if (!db) return 1
+        return da.getTime() - db.getTime()
+      })
+  }, [selectedDay, events])
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Calendar grid */}
+      <div className={`rounded-xl overflow-hidden ring-1 ring-gray-800 transition-opacity duration-200 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+        {/* Day-of-week header */}
+        <div className="grid grid-cols-7 bg-gray-900 border-b border-gray-800">
+          {WEEKDAY_ABBR.map((abbr, i) => (
+            <div key={i} className="py-2 text-center text-[11px] text-gray-600 font-medium">
+              {abbr}
+            </div>
+          ))}
+        </div>
+
+        {/* Day cells — 6 rows × 7 cols */}
+        <div className="grid grid-cols-7 bg-gray-950">
+          {days.map((day, idx) => {
+            const isCurrentMonth = day.getMonth() === month && day.getFullYear() === year
+            const isToday = isSameDay(day, today)
+            const isSelected = selectedDay ? isSameDay(day, selectedDay) : false
+            const dayEvents = events.filter(({ event }) => eventCoversDay(event, day))
+            const dotSlots = dayEvents.slice(0, 3)
+            const extra = dayEvents.length - 3
+
+            return (
+              <button
+                key={idx}
+                onClick={() => setSelectedDay(isSelected ? null : new Date(day))}
+                className={`min-h-[52px] p-1 flex flex-col items-center gap-0.5 border-b border-r border-gray-800/50 transition-colors
+                  ${isSelected ? 'bg-indigo-950/60' : 'hover:bg-gray-800/30 active:bg-gray-800/50'}
+                  ${!isCurrentMonth ? 'opacity-25' : ''}
+                `}
+              >
+                <span
+                  className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium
+                    ${isToday ? 'bg-indigo-600 text-white' : isSelected ? 'text-indigo-300 font-semibold' : 'text-gray-400'}
+                  `}
+                >
+                  {day.getDate()}
+                </span>
+                <div className="flex flex-wrap gap-0.5 justify-center min-h-[10px]">
+                  {dotSlots.map(({ person }, i) => (
+                    <span key={i} className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: person.color }} />
+                  ))}
+                  {extra > 0 && (
+                    <span className="text-[9px] text-gray-600 leading-tight">+{extra}</span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Selected day event list */}
+      {selectedDay && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-gray-500 px-1">
+            {selectedDay.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+          {selectedDayEvents.length === 0 ? (
+            <p className="text-sm text-gray-600 italic px-1">אין אירועים ביום זה</p>
+          ) : (
+            <div
+              className={`rounded-xl overflow-hidden ring-1 divide-y divide-gray-800/50
+                ${isSameDay(selectedDay, today) ? 'ring-indigo-500 bg-indigo-950/20' : 'ring-gray-800 bg-gray-900/40'}
+              `}
+            >
+              {selectedDayEvents.map(({ event, person, isGeneral }) => (
+                <AgendaEventRow
+                  key={event.id}
+                  event={event}
+                  person={person}
+                  isGeneral={isGeneral}
+                  onClick={() => onEventClick(event, person)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 function App() {
@@ -415,6 +807,34 @@ function App() {
   const { canInstall, install } = useInstallPrompt()
 
   const [weekOffset, setWeekOffset] = useState(0)
+  const [viewMode, setViewMode] = useState<'week' | 'month'>('week')
+  const [monthOffset, setMonthOffset] = useState(0)
+
+  const switchToMonth = () => {
+    const now = new Date()
+    const sunday = new Date(now)
+    sunday.setDate(now.getDate() - now.getDay() + weekOffset * 7)
+    const newMonthOffset =
+      (sunday.getFullYear() - now.getFullYear()) * 12 + (sunday.getMonth() - now.getMonth())
+    setMonthOffset(newMonthOffset)
+    setViewMode('month')
+  }
+
+  const switchToWeek = () => {
+    const now = new Date()
+    const target = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
+    const nowSunday = new Date(now)
+    nowSunday.setDate(now.getDate() - now.getDay())
+    nowSunday.setHours(0, 0, 0, 0)
+    const targetSunday = new Date(target)
+    targetSunday.setDate(target.getDate() - target.getDay())
+    targetSunday.setHours(0, 0, 0, 0)
+    const newWeekOffset = Math.round(
+      (targetSunday.getTime() - nowSunday.getTime()) / (7 * 24 * 60 * 60 * 1000)
+    )
+    setWeekOffset(newWeekOffset)
+    setViewMode('week')
+  }
 
   const { events, loading, error: calError, refetch } = useCalendarEvents({
     isAuthorized,
@@ -425,11 +845,45 @@ function App() {
 
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<{ event: CalendarEvent; person: Person } | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const hasScrolledToTodayRef = useRef(false)
+
+  useEffect(() => {
+    if (isSearchOpen) searchInputRef.current?.focus()
+  }, [isSearchOpen])
+
+  const toggleSearch = () => {
+    if (isSearchOpen) { setIsSearchOpen(false); setSearchQuery('') }
+    else setIsSearchOpen(true)
+  }
 
   const weekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset])
 
-  // Scroll to top when switching weeks
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [weekOffset])
+  // Scroll to today (centered) after events finish loading.
+  // A spacer below the day list (see main render) guarantees there's always
+  // enough room to center even when today is near the end of the week
+  // (e.g. Friday/Saturday) — otherwise 'center' would clamp and barely move.
+  // Uses a ref to avoid re-scrolling on every refresh or re-render.
+  useEffect(() => {
+    if (!isAuthorized) {
+      hasScrolledToTodayRef.current = false
+      return
+    }
+    if (weekOffset !== 0) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      hasScrolledToTodayRef.current = false
+      return
+    }
+    // Wait for events to load so the layout is stable before scrolling.
+    if (loading || hasScrolledToTodayRef.current) return
+    const todayEl = document.getElementById('today-section')
+    if (todayEl) {
+      todayEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      hasScrolledToTodayRef.current = true
+    }
+  }, [weekOffset, isAuthorized, loading])
 
   const classifiedEvents = useMemo(
     () =>
@@ -448,16 +902,81 @@ function App() {
     [classifiedEvents, activeFilter]
   )
 
+  // ── Search across the full calendar via Google API ────────────────────────
+  const {
+    events: rawSearchEvents,
+    loading: searchLoading,
+    loadingMore,
+    error: searchError,
+    hasMore,
+    loadMore,
+  } = useSearchEvents({
+    query: searchQuery,
+    isAuthorized,
+    getAccessToken,
+    onTokenExpired: signOut,
+  })
+
+  const classifiedSearchEvents = useMemo(
+    () =>
+      rawSearchEvents.map(event => {
+        const person = classifyEvent(event.summary ?? '')
+        return { event, person, isGeneral: isGeneralEvent(event.summary ?? '', person) }
+      }),
+    [rawSearchEvents]
+  )
+
+  const filteredSearchEvents = useMemo(
+    () =>
+      activeFilter === null
+        ? classifiedSearchEvents
+        : classifiedSearchEvents.filter(e => e.person.id === activeFilter),
+    [classifiedSearchEvents, activeFilter]
+  )
+
+  // ── Month view data ───────────────────────────────────────────────────────
+  const {
+    events: monthEvents,
+    loading: monthLoading,
+    error: monthError,
+    refetch: refetchMonth,
+  } = useMonthEvents({
+    isAuthorized,
+    getAccessToken,
+    onTokenExpired: signOut,
+    monthOffset,
+    enabled: viewMode === 'month',
+  })
+
+  const classifiedMonthEvents = useMemo(
+    () =>
+      monthEvents.map(event => {
+        const person = classifyEvent(event.summary ?? '')
+        return { event, person, isGeneral: isGeneralEvent(event.summary ?? '', person) }
+      }),
+    [monthEvents]
+  )
+
+  const filteredMonthEvents = useMemo(
+    () =>
+      activeFilter === null
+        ? classifiedMonthEvents
+        : classifiedMonthEvents.filter(e => e.person.id === activeFilter),
+    [classifiedMonthEvents, activeFilter]
+  )
+
   const dayGroups = useMemo(
     () =>
       weekDays.map(day => ({
         day,
         events: filteredEvents
-          .filter(({ event }) => {
-            const d = getEventDate(event)
-            return d ? isSameDay(d, day) : false
-          })
+          .filter(({ event }) => eventCoversDay(event, day))
           .sort((a, b) => {
+            // All-day events sort before timed events
+            const aAllDay = !!a.event.start.date
+            const bAllDay = !!b.event.start.date
+            if (aAllDay && !bAllDay) return -1
+            if (!aAllDay && bAllDay) return 1
             const da = getEventDate(a.event)
             const db = getEventDate(b.event)
             if (!da) return -1
@@ -471,80 +990,213 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-gray-800 px-4 py-3 flex items-center justify-between bg-gray-950/95 backdrop-blur">
-        <h1 className="text-lg font-bold text-indigo-400">ניהול הבית</h1>
-        <div className="flex items-center gap-2">
-          {canInstall && (
-            <button
-              onClick={install}
-              className="text-xs px-2 py-1 rounded bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-300 border border-indigo-700/50 transition-colors"
-            >
-              ⬇ התקן
-            </button>
-          )}
-          {isAuthorized && (
-            <button
-              onClick={refetch}
-              disabled={loading}
-              className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 disabled:opacity-40 transition-colors"
-            >
-              {loading ? '...' : 'רענן'}
-            </button>
-          )}
-          {isAuthorized ? (
-            <button
-              onClick={signOut}
-              className="text-sm px-3 py-1.5 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
-            >
-              התנתק
-            </button>
-          ) : (
-            <button
-              onClick={signIn}
-              disabled={status === 'loading'}
-              className="text-sm px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {status === 'loading' ? 'מתחבר...' : 'התחבר עם Google'}
-            </button>
-          )}
+      <header className="sticky top-0 z-10 border-b border-gray-800 bg-gray-950/95 backdrop-blur">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <h1 className="text-lg font-bold text-indigo-400">ניהול הבית</h1>
+          <div className="flex items-center gap-2">
+            {canInstall && (
+              <button
+                onClick={install}
+                className="text-xs px-2 py-1 rounded bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-300 border border-indigo-700/50 transition-colors"
+              >
+                ⬇ התקן
+              </button>
+            )}
+            {isAuthorized && (
+              <button
+                onClick={refetch}
+                disabled={loading}
+                className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 disabled:opacity-40 transition-colors"
+              >
+                {loading ? '...' : 'רענן'}
+              </button>
+            )}
+            {isAuthorized && (
+              <button
+                onClick={toggleSearch}
+                className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                  isSearchOpen
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-800 hover:bg-gray-700 text-gray-400'
+                }`}
+                aria-label="חיפוש"
+              >
+                <SearchIcon className="w-4 h-4" />
+              </button>
+            )}
+            {isAuthorized ? (
+              <button
+                onClick={signOut}
+                className="text-sm px-3 py-1.5 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
+              >
+                התנתק
+              </button>
+            ) : (
+              <button
+                onClick={signIn}
+                disabled={status === 'loading' || status === 'refreshing'}
+                className="text-sm px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {status === 'loading' || status === 'refreshing' ? 'מתחבר...' : 'התחבר עם Google'}
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Search bar */}
+        {isSearchOpen && isAuthorized && (
+          <div className="px-4 pb-3">
+            <div className="relative">
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="חיפוש אירועים..."
+                dir="rtl"
+                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-base leading-none"
+                  aria-label="נקה חיפוש"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 p-4 max-w-2xl mx-auto w-full flex flex-col gap-4">
         {/* Errors */}
-        {(authError || calError) && (
-          <p className="text-red-400 text-sm">שגיאה: {authError ?? calError}</p>
+        {(authError || calError || (isSearchOpen && searchError)) && (
+          <p className="text-red-400 text-sm">שגיאה: {authError ?? calError ?? searchError}</p>
+        )}
+
+        {/* Silent re-auth in progress */}
+        {!isAuthorized && status === 'refreshing' && (
+          <div className="flex-1 flex items-center justify-center pt-16">
+            <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          </div>
         )}
 
         {/* Not signed in */}
-        {!isAuthorized && (
+        {!isAuthorized && status !== 'refreshing' && (
           <div className="flex-1 flex items-center justify-center text-center pt-16">
             <p className="text-gray-500 text-sm">ברוכים הבאים — הלוח המשפחתי</p>
           </div>
         )}
 
-        {/* Weekly agenda */}
-        {isAuthorized && (
+        {/* Search mode */}
+        {isAuthorized && isSearchOpen && (
           <>
-            <WeekNav
-              weekOffset={weekOffset}
-              days={weekDays}
-              loading={loading}
-              onPrev={() => setWeekOffset(o => o - 1)}
-              onNext={() => setWeekOffset(o => o + 1)}
-              onToday={() => setWeekOffset(0)}
-            />
-            <FilterBar activeFilter={activeFilter} onFilter={setActiveFilter} />
-            <div className={`flex flex-col gap-3 transition-opacity duration-200 ${loading ? 'opacity-50' : 'opacity-100'}`}>
-              {dayGroups.map(({ day, events: dayEvents }) => (
-                <DaySection
-                  key={day.toISOString()}
-                  day={day}
-                  events={dayEvents}
+            {searchQuery.trim() ? (
+              <>
+                <FilterBar activeFilter={activeFilter} onFilter={setActiveFilter} />
+                <SearchResults
+                  events={filteredSearchEvents}
+                  loading={searchLoading}
+                  loadingMore={loadingMore}
+                  hasMore={hasMore}
+                  loadMore={loadMore}
                   onEventClick={(ev, p) => setSelectedEvent({ event: ev, person: p })}
                 />
-              ))}
+              </>
+            ) : (
+              <div className="flex items-center justify-center py-20">
+                <p className="text-gray-600 text-sm text-center">הקלד שם, מיקום או כל מילה לחיפוש בכל היומן</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Week / Month agenda */}
+        {isAuthorized && !isSearchOpen && (
+          <>
+            {/* View toggle */}
+            <div className="flex bg-gray-900 rounded-xl p-0.5">
+              <button
+                onClick={switchToWeek}
+                className={`flex-1 py-1.5 text-sm rounded-lg transition-colors ${
+                  viewMode === 'week' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                שבועי
+              </button>
+              <button
+                onClick={switchToMonth}
+                className={`flex-1 py-1.5 text-sm rounded-lg transition-colors ${
+                  viewMode === 'month' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                חודשי
+              </button>
             </div>
+
+            {viewMode === 'week' ? (
+              <>
+                <WeekNav
+                  weekOffset={weekOffset}
+                  days={weekDays}
+                  loading={loading}
+                  onPrev={() => setWeekOffset(o => o - 1)}
+                  onNext={() => setWeekOffset(o => o + 1)}
+                  onToday={() => setWeekOffset(0)}
+                  onPrevMonth={() => setWeekOffset(o => offsetByPeriod(o, -1))}
+                  onNextMonth={() => setWeekOffset(o => offsetByPeriod(o, 1))}
+                  onPrevYear={() => setWeekOffset(o => offsetByPeriod(o, -12))}
+                  onNextYear={() => setWeekOffset(o => offsetByPeriod(o, 12))}
+                />
+                <FilterBar activeFilter={activeFilter} onFilter={setActiveFilter} />
+                <div className={`flex flex-col gap-3 transition-opacity duration-200 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+                  {dayGroups.map(({ day, events: dayEvents }) => (
+                    <DaySection
+                      key={day.toISOString()}
+                      day={day}
+                      events={dayEvents}
+                      onEventClick={(ev, p) => setSelectedEvent({ event: ev, person: p })}
+                    />
+                  ))}
+                </div>
+                <div aria-hidden className="h-[50vh]" />
+              </>
+            ) : (
+              <>
+                <MonthNav
+                  monthOffset={monthOffset}
+                  loading={monthLoading}
+                  onPrev={() => setMonthOffset(o => o - 1)}
+                  onNext={() => setMonthOffset(o => o + 1)}
+                  onToday={() => setMonthOffset(0)}
+                  onPrevYear={() => setMonthOffset(o => o - 12)}
+                  onNextYear={() => setMonthOffset(o => o + 12)}
+                />
+                {monthError && (
+                  <p className="text-red-400 text-sm">שגיאה: {monthError}</p>
+                )}
+                <FilterBar activeFilter={activeFilter} onFilter={setActiveFilter} />
+                <MonthView
+                  monthOffset={monthOffset}
+                  events={filteredMonthEvents}
+                  loading={monthLoading}
+                  onEventClick={(ev, p) => setSelectedEvent({ event: ev, person: p })}
+                />
+                {isAuthorized && (
+                  <div className="flex justify-center pt-1">
+                    <button
+                      onClick={refetchMonth}
+                      disabled={monthLoading}
+                      className="text-xs px-3 py-1 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 disabled:opacity-40 transition-colors border border-gray-800"
+                    >
+                      {monthLoading ? '...' : 'רענן'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </>
         )}
       </main>

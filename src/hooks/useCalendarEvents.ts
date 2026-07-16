@@ -22,7 +22,10 @@ export function useCalendarEvents({
   weekOffset,
 }: UseCalendarEventsOptions): CalendarEventsState {
   const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [loading, setLoading] = useState(false)
+  // Starts true (not false): the fetch effect below only flips it to true
+  // AFTER the first render, so a false initial value lets consumers see a
+  // "not loading" state for one render before the fetch has even started.
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const cacheRef = useRef<Map<number, CalendarEvent[]>>(new Map())
