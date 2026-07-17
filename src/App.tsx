@@ -26,9 +26,9 @@ function isSameDay(a: Date, b: Date): boolean {
 
 // Returns true if `day` (local midnight) falls within the event's duration.
 // All-day events: range is [start.date, end.date) — end is exclusive per Google Calendar spec.
-// Timed events: match only the calendar day they begin on.
 function eventCoversDay(event: CalendarEvent, day: Date): boolean {
   if (event.start.date) {
+    // All-day event: end.date is exclusive per Google Calendar spec
     const start = new Date(event.start.date + 'T00:00:00')
     const end = event.end?.date
       ? new Date(event.end.date + 'T00:00:00')
@@ -36,7 +36,11 @@ function eventCoversDay(event: CalendarEvent, day: Date): boolean {
     return day >= start && day < end
   }
   if (event.start.dateTime) {
-    return isSameDay(new Date(event.start.dateTime), day)
+    // Timed event (may span multiple days): check overlap with this calendar day
+    const eventStart = new Date(event.start.dateTime)
+    const eventEnd = event.end?.dateTime ? new Date(event.end.dateTime) : eventStart
+    const dayEnd = new Date(day.getTime() + 86400000) // start of next day
+    return eventStart < dayEnd && eventEnd > day
   }
   return false
 }
