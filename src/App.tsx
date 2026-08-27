@@ -5,6 +5,7 @@ import { useMonthEvents } from './hooks/useMonthEvents'
 import { useSearchEvents } from './hooks/useSearchEvents'
 import { useInstallPrompt } from './hooks/useInstallPrompt'
 import { classifyEvent } from './utils/classifyEvent'
+import { getHolidaysForDay, hasHoliday, type IsraeliHoliday } from './utils/israeliHolidays'
 import type { CalendarEvent } from './services/calendarApi'
 import type { Person } from './config/people'
 import { PEOPLE, DEFAULT_OWNER_ID } from './config/people'
@@ -178,6 +179,23 @@ function GeneralBadge() {
   return (
     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-600 font-medium shrink-0 border border-gray-700">
       כללי
+    </span>
+  )
+}
+
+// ── HolidayChip ───────────────────────────────────────────────────────────────
+
+function HolidayChip({ holiday }: { holiday: IsraeliHoliday }) {
+  const styles: Record<IsraeliHoliday['type'], string> = {
+    chag:          'bg-amber-900/50 text-amber-200 border-amber-700/60',
+    erev:          'bg-amber-950/50 text-amber-400 border-amber-800/50',
+    'chol-hamoed': 'bg-yellow-950/50 text-yellow-400 border-yellow-800/50',
+    modern:        'bg-blue-950/50 text-blue-300 border-blue-800/50',
+    minor:         'bg-purple-950/50 text-purple-300 border-purple-800/50',
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium ${styles[holiday.type]}`}>
+      ✡ {holiday.name}
     </span>
   )
 }
@@ -430,6 +448,7 @@ function DaySection({
   onEventClick: (event: CalendarEvent, person: Person) => void
 }) {
   const today = isSameDay(new Date(), day)
+  const holidays = getHolidaysForDay(day)
 
   return (
     <div
@@ -445,9 +464,7 @@ function DaySection({
         }`}
       >
         <div className="flex items-center gap-2">
-          <span
-            className={`font-semibold text-sm ${today ? 'text-indigo-300' : 'text-gray-300'}`}
-          >
+          <span className={`font-semibold text-sm ${today ? 'text-indigo-300' : 'text-gray-300'}`}>
             {formatWeekday(day)}
           </span>
           <span className="text-xs text-gray-500">{formatShortDate(day)}</span>
@@ -462,10 +479,15 @@ function DaySection({
         )}
       </div>
 
+      {/* Holiday chips */}
+      {holidays.length > 0 && (
+        <div className="px-4 py-1.5 flex flex-wrap gap-1.5 bg-amber-950/20 border-b border-amber-900/20">
+          {holidays.map((h, i) => <HolidayChip key={i} holiday={h} />)}
+        </div>
+      )}
+
       {/* Event list */}
-      <div
-        className={`divide-y divide-gray-800/50 ${today ? 'bg-indigo-950/20' : 'bg-gray-900/40'}`}
-      >
+      <div className={`divide-y divide-gray-800/50 ${today ? 'bg-indigo-950/20' : 'bg-gray-900/40'}`}>
         {events.length === 0 ? (
           <p className="px-4 py-3 text-xs text-gray-700 italic">אין אירועים</p>
         ) : (
@@ -738,26 +760,28 @@ function MonthView({
             const isToday = isSameDay(day, today)
             const isSelected = selectedDay ? isSameDay(day, selectedDay) : false
             const dayEvents = events.filter(({ event }) => eventCoversDay(event, day))
-            const dotSlots = dayEvents.slice(0, 3)
-            const extra = dayEvents.length - 3
+            const isHoliday = isCurrentMonth && hasHoliday(day)
+            const dotSlots = dayEvents.slice(0, isHoliday ? 2 : 3)
+            const extra = dayEvents.length - dotSlots.length
 
             return (
               <button
                 key={idx}
                 onClick={() => setSelectedDay(isSelected ? null : new Date(day))}
                 className={`min-h-[52px] p-1 flex flex-col items-center gap-0.5 border-b border-r border-gray-800/50 transition-colors
-                  ${isSelected ? 'bg-indigo-950/60' : 'hover:bg-gray-800/30 active:bg-gray-800/50'}
+                  ${isSelected ? 'bg-indigo-950/60' : isHoliday ? 'bg-amber-950/10 hover:bg-amber-950/20' : 'hover:bg-gray-800/30 active:bg-gray-800/50'}
                   ${!isCurrentMonth ? 'opacity-25' : ''}
                 `}
               >
                 <span
                   className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium
-                    ${isToday ? 'bg-indigo-600 text-white' : isSelected ? 'text-indigo-300 font-semibold' : 'text-gray-400'}
+                    ${isToday ? 'bg-indigo-600 text-white' : isSelected ? 'text-indigo-300 font-semibold' : isHoliday ? 'text-amber-300' : 'text-gray-400'}
                   `}
                 >
                   {day.getDate()}
                 </span>
                 <div className="flex flex-wrap gap-0.5 justify-center min-h-[10px]">
+                  {isHoliday && <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-amber-400" />}
                   {dotSlots.map(({ person }, i) => (
                     <span key={i} className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: person.color }} />
                   ))}
@@ -777,6 +801,11 @@ function MonthView({
           <p className="text-xs text-gray-500 px-1">
             {selectedDay.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
+          {getHolidaysForDay(selectedDay).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-1">
+              {getHolidaysForDay(selectedDay).map((h, i) => <HolidayChip key={i} holiday={h} />)}
+            </div>
+          )}
           {selectedDayEvents.length === 0 ? (
             <p className="text-sm text-gray-600 italic px-1">אין אירועים ביום זה</p>
           ) : (
