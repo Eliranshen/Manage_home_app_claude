@@ -1,4 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="20" fill="#1e1b4b"/>
-  <text x="50" y="68" font-size="52" text-anchor="middle" font-family="Arial" fill="#818cf8">🏠</text>
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A1200"/>
+      <stop offset="100%" stop-color="#251A00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- ring clips (calendar bumps) -->
+  <rect x="144" y="52"  width="34" height="72" rx="17" fill="#4A3400"/>
+  <rect x="334" y="52"  width="34" height="72" rx="17" fill="#4A3400"/>
+
+  <!-- card body -->
+  <rect x="46"  y="82"  width="420" height="384" rx="36" fill="#1E1600"/>
+
+  <!-- amber header -->
+  <rect x="46"  y="82"  width="420" height="98"  rx="36" fill="#D97706"/>
+  <rect x="46"  y="148" width="420" height="32"  fill="#D97706"/>
+
+  <!-- header label — 3 white rectangles simulating "אוגוסט 2026" text -->
+  <rect x="178" y="118" width="72" height="12" rx="6" fill="rgba(255,255,255,0.75)"/>
+  <rect x="258" y="118" width="16" height="12" rx="6" fill="rgba(255,255,255,0.45)"/>
+  <rect x="282" y="118" width="52" height="12" rx="6" fill="rgba(255,255,255,0.75)"/>
+
+  <!-- ── Row 1 ── -->
+  <rect x="76"  y="204" width="360" height="52" rx="14" fill="rgba(217,119,6,0.14)"/>
+  <!-- day label pill (amber) -->
+  <rect x="96"  y="218" width="70"  height="24" rx="8"  fill="rgba(217,119,6,0.55)"/>
+  <!-- event bar -->
+  <rect x="200" y="218" width="160" height="24" rx="8"  fill="rgba(217,119,6,0.42)"/>
+
+  <!-- ── Row 2 ── -->
+  <rect x="76"  y="270" width="360" height="52" rx="14" fill="rgba(255,255,255,0.03)"/>
+  <rect x="96"  y="284" width="70"  height="24" rx="8"  fill="rgba(255,255,255,0.1)"/>
+  <rect x="200" y="284" width="110" height="24" rx="8"  fill="rgba(59,130,246,0.45)"/>
+
+  <!-- ── Row 3 (highlighted) ── -->
+  <rect x="76"  y="336" width="360" height="52" rx="14" fill="rgba(217,119,6,0.22)"/>
+  <rect x="96"  y="350" width="70"  height="24" rx="8"  fill="rgba(217,119,6,0.7)"/>
+  <rect x="200" y="350" width="204" height="24" rx="8"  fill="rgba(217,119,6,0.6)"/>
+
+  <!-- ── Row 4 ── -->
+  <rect x="76"  y="402" width="360" height="52" rx="14" fill="rgba(255,255,255,0.03)"/>
+  <rect x="96"  y="416" width="70"  height="24" rx="8"  fill="rgba(255,255,255,0.1)"/>
+  <rect x="200" y="416" width="142" height="24" rx="8"  fill="rgba(236,72,153,0.42)"/>
 </svg>
