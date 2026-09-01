@@ -19,3 +19,30 @@
     @apply bg-gray-950 text-gray-100 min-h-screen;
   }
 }
+
+/* ── Theme accent tokens ──────────────────────────────────────────────────── */
+:root                     { --acc: 99 102 241; }   /* indigo (default) */
+html[data-theme="blue"]   { --acc: 59 130 246; }
+html[data-theme="teal"]   { --acc: 20 184 166; }
+html[data-theme="rose"]   { --acc: 244 63 94;  }
+
+/* Accent utility classes (unlayered → always win over Tailwind utilities) */
+.acc-ring        { --tw-ring-color: rgb(var(--acc)); }
+.acc-bg          { background-color: rgb(var(--acc)); }
+.acc-bg-faint    { background-color: rgb(var(--acc) / 0.10); }
+.acc-bg-mid      { background-color: rgb(var(--acc) / 0.18); }
+.acc-text        { color: rgb(var(--acc) / 0.85); }
+.acc-text-light  { color: rgb(var(--acc) / 0.60); }
+.acc-border      { border-color: rgb(var(--acc) / 0.35); }
+
+/* "היום" nav button */
+.acc-nav-btn {
+  background-color: rgb(var(--acc) / 0.15);
+  color:            rgb(var(--acc) / 0.85);
+  border-color:     rgb(var(--acc) / 0.30);
+}
+.acc-nav-btn:hover { background-color: rgb(var(--acc) / 0.25); }
+
+/* Solid accent button (sign-in, etc.) */
+.acc-btn { background-color: rgb(var(--acc)); color: white; }
+.acc-btn:hover:not(:disabled) { background-color: rgb(var(--acc) / 0.82); }

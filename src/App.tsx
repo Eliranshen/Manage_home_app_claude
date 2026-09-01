@@ -9,6 +9,7 @@ import { getHolidaysForDay, hasHoliday, type IsraeliHoliday } from './utils/isra
 import type { CalendarEvent } from './services/calendarApi'
 import type { Person } from './config/people'
 import { PEOPLE, DEFAULT_OWNER_ID } from './config/people'
+import { THEMES, DEFAULT_THEME, type Theme } from './config/themes'
 
 // ── date helpers ──────────────────────────────────────────────────────────────
 
@@ -142,6 +143,55 @@ function isGeneralEvent(title: string, person: Person): boolean {
       if (!w.endsWith(n)) return false
       return /^[ולשבכהמ]+$/.test(w.slice(0, w.length - n.length))
     })
+  )
+}
+
+// ── ThemePicker ───────────────────────────────────────────────────────────────
+
+function ThemePicker({ theme, onChange }: { theme: Theme; onChange: (t: Theme) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-7 h-7 rounded-full border-2 border-gray-600 hover:border-gray-400 transition-colors shrink-0"
+        style={{ backgroundColor: `rgb(${theme.rgb})` }}
+        aria-label="ערכת צבעים"
+        title="שינוי צבעים"
+      />
+      {open && (
+        <div
+          className="absolute top-full mt-2 bg-gray-900 border border-gray-700 rounded-2xl p-2.5 flex gap-2.5 shadow-2xl z-50"
+          style={{ left: '50%', transform: 'translateX(-50%)' }}
+        >
+          {THEMES.map(t => (
+            <button
+              key={t.id}
+              onClick={() => { onChange(t); setOpen(false) }}
+              className={`w-8 h-8 rounded-full transition-all duration-150 ${
+                t.id === theme.id
+                  ? 'ring-2 ring-white ring-offset-1 ring-offset-gray-900 scale-110'
+                  : 'opacity-60 hover:opacity-100 hover:scale-110'
+              }`}
+              style={{ backgroundColor: `rgb(${t.rgb})` }}
+              title={t.name}
+              aria-label={t.name}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -307,12 +357,12 @@ function WeekNav({
             {getWeekLabel(weekOffset, days)}
           </span>
           {loading && (
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
+            <span className="w-1.5 h-1.5 rounded-full acc-bg animate-pulse shrink-0" />
           )}
           {weekOffset !== 0 && (
             <button
               onClick={onToday}
-              className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-400 border border-indigo-700/50 transition-colors"
+              className="shrink-0 text-xs px-2 py-0.5 rounded-full acc-nav-btn border transition-colors"
             >
               היום
             </button>
@@ -454,22 +504,22 @@ function DaySection({
     <div
       id={today ? 'today-section' : undefined}
       className={`rounded-xl overflow-hidden ${
-        today ? 'ring-2 ring-indigo-500' : 'ring-1 ring-gray-800'
+        today ? 'ring-2 acc-ring' : 'ring-1 ring-gray-800'
       }`}
     >
       {/* Day header */}
       <div
         className={`flex items-center justify-between px-4 py-2.5 ${
-          today ? 'bg-indigo-950/70' : 'bg-gray-900'
+          today ? 'acc-bg-mid' : 'bg-gray-900'
         }`}
       >
         <div className="flex items-center gap-2">
-          <span className={`font-semibold text-sm ${today ? 'text-indigo-300' : 'text-gray-300'}`}>
+          <span className={`font-semibold text-sm ${today ? 'acc-text' : 'text-gray-300'}`}>
             {formatWeekday(day)}
           </span>
           <span className="text-xs text-gray-500">{formatShortDate(day)}</span>
           {today && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-medium leading-none">
+            <span className="text-xs px-1.5 py-0.5 rounded-full acc-bg text-white font-medium leading-none">
               היום
             </span>
           )}
@@ -487,7 +537,7 @@ function DaySection({
       )}
 
       {/* Event list */}
-      <div className={`divide-y divide-gray-800/50 ${today ? 'bg-indigo-950/20' : 'bg-gray-900/40'}`}>
+      <div className={`divide-y divide-gray-800/50 ${today ? 'acc-bg-faint' : 'bg-gray-900/40'}`}>
         {events.length === 0 ? (
           <p className="px-4 py-3 text-xs text-gray-700 italic">אין אירועים</p>
         ) : (
@@ -567,25 +617,25 @@ function SearchResults({
         return (
           <div
             key={key}
-            className={`rounded-xl overflow-hidden ${today ? 'ring-2 ring-indigo-500' : 'ring-1 ring-gray-800'}`}
+            className={`rounded-xl overflow-hidden ${today ? 'ring-2 acc-ring' : 'ring-1 ring-gray-800'}`}
           >
-            <div className={`flex items-center justify-between px-4 py-2.5 ${today ? 'bg-indigo-950/70' : 'bg-gray-900'}`}>
+            <div className={`flex items-center justify-between px-4 py-2.5 ${today ? 'acc-bg-mid' : 'bg-gray-900'}`}>
               <div className="flex items-center gap-2">
-                <span className={`font-semibold text-sm ${today ? 'text-indigo-300' : 'text-gray-300'}`}>
+                <span className={`font-semibold text-sm ${today ? 'acc-text' : 'text-gray-300'}`}>
                   {date.toLocaleDateString('he-IL', { weekday: 'long' })}
                 </span>
                 <span className="text-xs text-gray-500">
                   {date.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: 'numeric' })}
                 </span>
                 {today && (
-                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-medium leading-none">
+                  <span className="text-xs px-1.5 py-0.5 rounded-full acc-bg text-white font-medium leading-none">
                     היום
                   </span>
                 )}
               </div>
               <span className="text-xs text-gray-600">{dayEvents.length}</span>
             </div>
-            <div className={`divide-y divide-gray-800/50 ${today ? 'bg-indigo-950/20' : 'bg-gray-900/40'}`}>
+            <div className={`divide-y divide-gray-800/50 ${today ? 'acc-bg-faint' : 'bg-gray-900/40'}`}>
               {dayEvents.map(({ event, person, isGeneral }) => (
                 <AgendaEventRow
                   key={event.id}
@@ -604,7 +654,7 @@ function SearchResults({
         <button
           onClick={loadMore}
           disabled={loadingMore}
-          className="w-full py-3 text-sm text-indigo-400 hover:text-indigo-300 disabled:opacity-50 border border-gray-800 rounded-xl hover:bg-gray-900/40 transition-colors"
+          className="w-full py-3 text-sm acc-text hover:acc-text-light disabled:opacity-50 border border-gray-800 rounded-xl hover:bg-gray-900/40 transition-colors"
         >
           {loadingMore ? (
             <span className="flex items-center justify-center gap-2">
@@ -676,11 +726,11 @@ function MonthNav({
         </button>
         <div className="flex-1 flex items-center justify-center gap-1.5 min-w-0">
           <span className="text-sm text-gray-300 font-medium truncate">{label}</span>
-          {loading && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />}
+          {loading && <span className="w-1.5 h-1.5 rounded-full acc-bg animate-pulse shrink-0" />}
           {monthOffset !== 0 && (
             <button
               onClick={onToday}
-              className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-400 border border-indigo-700/50 transition-colors"
+              className="shrink-0 text-xs px-2 py-0.5 rounded-full acc-nav-btn border transition-colors"
             >
               היום
             </button>
@@ -769,13 +819,13 @@ function MonthView({
                 key={idx}
                 onClick={() => setSelectedDay(isSelected ? null : new Date(day))}
                 className={`min-h-[52px] p-1 flex flex-col items-center gap-0.5 border-b border-r border-gray-800/50 transition-colors
-                  ${isSelected ? 'bg-indigo-950/60' : isHoliday ? 'bg-amber-950/10 hover:bg-amber-950/20' : 'hover:bg-gray-800/30 active:bg-gray-800/50'}
+                  ${isSelected ? 'acc-bg-faint' : isHoliday ? 'bg-amber-950/10 hover:bg-amber-950/20' : 'hover:bg-gray-800/30 active:bg-gray-800/50'}
                   ${!isCurrentMonth ? 'opacity-25' : ''}
                 `}
               >
                 <span
                   className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium
-                    ${isToday ? 'bg-indigo-600 text-white' : isSelected ? 'text-indigo-300 font-semibold' : isHoliday ? 'text-amber-300' : 'text-gray-400'}
+                    ${isToday ? 'acc-bg text-white' : isSelected ? 'acc-text font-semibold' : isHoliday ? 'text-amber-300' : 'text-gray-400'}
                   `}
                 >
                   {day.getDate()}
@@ -811,7 +861,7 @@ function MonthView({
           ) : (
             <div
               className={`rounded-xl overflow-hidden ring-1 divide-y divide-gray-800/50
-                ${isSameDay(selectedDay, today) ? 'ring-indigo-500 bg-indigo-950/20' : 'ring-gray-800 bg-gray-900/40'}
+                ${isSameDay(selectedDay, today) ? 'acc-ring acc-bg-faint' : 'ring-gray-800 bg-gray-900/40'}
               `}
             >
               {selectedDayEvents.map(({ event, person, isGeneral }) => (
@@ -838,6 +888,16 @@ function App() {
     useGoogleAuth()
 
   const { canInstall, install } = useInstallPrompt()
+
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem('mha_theme')
+    return THEMES.find(t => t.id === saved) ?? DEFAULT_THEME
+  })
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme.id
+    localStorage.setItem('mha_theme', theme.id)
+  }, [theme])
 
   const [weekOffset, setWeekOffset] = useState(0)
   const [viewMode, setViewMode] = useState<'week' | 'month'>('week')
@@ -1025,7 +1085,7 @@ function App() {
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-gray-800 bg-gray-950/95 backdrop-blur">
         <div className="px-4 py-3 flex items-center justify-between">
-          <h1 className="text-lg font-bold text-indigo-400">ניהול הבית</h1>
+          <h1 className="text-lg font-bold acc-text">ניהול הבית</h1>
           <div className="flex items-center gap-2">
             {canInstall && (
               <button
@@ -1044,12 +1104,13 @@ function App() {
                 {loading ? '...' : 'רענן'}
               </button>
             )}
+            <ThemePicker theme={theme} onChange={setTheme} />
             {isAuthorized && (
               <button
                 onClick={toggleSearch}
                 className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
                   isSearchOpen
-                    ? 'bg-indigo-600 text-white'
+                    ? 'acc-bg text-white'
                     : 'bg-gray-800 hover:bg-gray-700 text-gray-400'
                 }`}
                 aria-label="חיפוש"
@@ -1068,7 +1129,7 @@ function App() {
               <button
                 onClick={signIn}
                 disabled={status === 'loading' || status === 'refreshing'}
-                className="text-sm px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="text-sm px-3 py-1.5 rounded-md acc-btn disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {status === 'loading' || status === 'refreshing' ? 'מתחבר...' : 'התחבר עם Google'}
               </button>
@@ -1154,7 +1215,7 @@ function App() {
               <button
                 onClick={switchToWeek}
                 className={`flex-1 py-1.5 text-sm rounded-lg transition-colors ${
-                  viewMode === 'week' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-500 hover:text-gray-300'
+                  viewMode === 'week' ? 'acc-bg text-white font-medium' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
                 שבועי
@@ -1162,7 +1223,7 @@ function App() {
               <button
                 onClick={switchToMonth}
                 className={`flex-1 py-1.5 text-sm rounded-lg transition-colors ${
-                  viewMode === 'month' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-500 hover:text-gray-300'
+                  viewMode === 'month' ? 'acc-bg text-white font-medium' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
                 חודשי
