@@ -12,7 +12,7 @@ export interface IsraeliHoliday {
 
 // ── Hebrew calendar math ──────────────────────────────────────────────────────
 
-const EPOCH = 347997 // Julian Day Number of 1 Tishri, year 1 AM
+const EPOCH = 347998 // Julian Day Number of 1 Tishri, year 1 AM (days start at sunset)
 
 function isLeap(y: number): boolean { return (7 * y + 1) % 19 < 7 }
 function monthsInYear(y: number): number { return isLeap(y) ? 13 : 12 }
