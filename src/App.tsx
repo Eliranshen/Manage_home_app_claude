@@ -163,32 +163,56 @@ function ThemePicker({ theme, onChange }: { theme: Theme; onChange: (t: Theme) =
 
   return (
     <div className="relative" ref={ref}>
+      {/* Trigger — mini theme preview card */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-7 h-7 rounded-full border-2 border-gray-600 hover:border-gray-400 transition-colors shrink-0"
-        style={{ backgroundColor: `rgb(${theme.rgb})` }}
+        className="relative w-9 h-6 rounded-md border border-gray-600 hover:border-gray-400 overflow-hidden transition-colors shrink-0"
+        style={{ backgroundColor: `rgb(${theme.bg})` }}
         aria-label="ערכת צבעים"
-        title="שינוי צבעים"
-      />
+        title="שינוי ערכת צבעים"
+      >
+        <span
+          className="absolute bottom-0 left-0 right-0 h-1.5"
+          style={{ backgroundColor: `rgb(${theme.accent})` }}
+        />
+      </button>
+
       {open && (
         <div
-          className="absolute top-full mt-2 bg-gray-900 border border-gray-700 rounded-2xl p-2.5 flex gap-2.5 shadow-2xl z-50"
-          style={{ left: '50%', transform: 'translateX(-50%)' }}
+          className="absolute top-full mt-2 border border-gray-700 rounded-2xl p-3 shadow-2xl z-50"
+          style={{ left: '50%', transform: 'translateX(-50%)', backgroundColor: 'rgb(var(--surf))' }}
         >
-          {THEMES.map(t => (
-            <button
-              key={t.id}
-              onClick={() => { onChange(t); setOpen(false) }}
-              className={`w-8 h-8 rounded-full transition-all duration-150 ${
-                t.id === theme.id
-                  ? 'ring-2 ring-white ring-offset-1 ring-offset-gray-900 scale-110'
-                  : 'opacity-60 hover:opacity-100 hover:scale-110'
-              }`}
-              style={{ backgroundColor: `rgb(${t.rgb})` }}
-              title={t.name}
-              aria-label={t.name}
-            />
-          ))}
+          <p className="text-xs text-gray-500 mb-2 text-center whitespace-nowrap">ערכת צבעים</p>
+          <div className="flex gap-2">
+            {THEMES.map(t => (
+              <button
+                key={t.id}
+                onClick={() => { onChange(t); setOpen(false) }}
+                className={`relative w-11 h-9 rounded-xl overflow-hidden border-2 transition-all duration-150 flex flex-col items-center justify-center gap-1 ${
+                  t.id === theme.id
+                    ? 'border-white scale-105'
+                    : 'border-transparent opacity-60 hover:opacity-100 hover:scale-105'
+                }`}
+                style={{ backgroundColor: `rgb(${t.bg})` }}
+                title={t.name}
+                aria-label={t.name}
+              >
+                {/* Person color dots */}
+                <div className="flex gap-0.5">
+                  {Object.values(t.personColors).slice(0, 3).map((c, i) => (
+                    <span key={i} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c }} />
+                  ))}
+                </div>
+                {/* Accent stripe */}
+                <span
+                  className="absolute bottom-0 left-0 right-0 h-1.5"
+                  style={{ backgroundColor: `rgb(${t.accent})` }}
+                />
+              </button>
+            ))}
+          </div>
+          {/* Theme name */}
+          <p className="text-xs text-gray-400 text-center mt-2">{theme.name}</p>
         </div>
       )}
     </div>
@@ -403,7 +427,7 @@ function EventDetailModal({ event, person, onClose }: { event: CalendarEvent; pe
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-full max-w-sm bg-gray-900 rounded-2xl border border-gray-700 p-5"
+        className="relative w-full max-w-sm bg-surf rounded-2xl border border-gray-700 p-5"
         onClick={e => e.stopPropagation()}
       >
         {/* Title row: dot + title + close button */}
@@ -510,7 +534,7 @@ function DaySection({
       {/* Day header */}
       <div
         className={`flex items-center justify-between px-4 py-2.5 ${
-          today ? 'acc-bg-mid' : 'bg-gray-900'
+          today ? 'acc-bg-mid' : 'bg-surf'
         }`}
       >
         <div className="flex items-center gap-2">
@@ -537,7 +561,7 @@ function DaySection({
       )}
 
       {/* Event list */}
-      <div className={`divide-y divide-gray-800/50 ${today ? 'acc-bg-faint' : 'bg-gray-900/40'}`}>
+      <div className={`divide-y divide-gray-800/50 ${today ? 'acc-bg-faint' : 'bg-surf-40'}`}>
         {events.length === 0 ? (
           <p className="px-4 py-3 text-xs text-gray-700 italic">אין אירועים</p>
         ) : (
@@ -619,7 +643,7 @@ function SearchResults({
             key={key}
             className={`rounded-xl overflow-hidden ${today ? 'ring-2 acc-ring' : 'ring-1 ring-gray-800'}`}
           >
-            <div className={`flex items-center justify-between px-4 py-2.5 ${today ? 'acc-bg-mid' : 'bg-gray-900'}`}>
+            <div className={`flex items-center justify-between px-4 py-2.5 ${today ? 'acc-bg-mid' : 'bg-surf'}`}>
               <div className="flex items-center gap-2">
                 <span className={`font-semibold text-sm ${today ? 'acc-text' : 'text-gray-300'}`}>
                   {date.toLocaleDateString('he-IL', { weekday: 'long' })}
@@ -635,7 +659,7 @@ function SearchResults({
               </div>
               <span className="text-xs text-gray-600">{dayEvents.length}</span>
             </div>
-            <div className={`divide-y divide-gray-800/50 ${today ? 'acc-bg-faint' : 'bg-gray-900/40'}`}>
+            <div className={`divide-y divide-gray-800/50 ${today ? 'acc-bg-faint' : 'bg-surf-40'}`}>
               {dayEvents.map(({ event, person, isGeneral }) => (
                 <AgendaEventRow
                   key={event.id}
@@ -795,7 +819,7 @@ function MonthView({
       {/* Calendar grid */}
       <div className={`rounded-xl overflow-hidden ring-1 ring-gray-800 transition-opacity duration-200 ${loading ? 'opacity-50' : 'opacity-100'}`}>
         {/* Day-of-week header */}
-        <div className="grid grid-cols-7 bg-gray-900 border-b border-gray-800">
+        <div className="grid grid-cols-7 bg-surf border-b border-gray-800">
           {WEEKDAY_ABBR.map((abbr, i) => (
             <div key={i} className="py-2 text-center text-[11px] text-gray-600 font-medium">
               {abbr}
@@ -804,7 +828,7 @@ function MonthView({
         </div>
 
         {/* Day cells — 6 rows × 7 cols */}
-        <div className="grid grid-cols-7 bg-gray-950">
+        <div className="grid grid-cols-7 bg-base">
           {days.map((day, idx) => {
             const isCurrentMonth = day.getMonth() === month && day.getFullYear() === year
             const isToday = isSameDay(day, today)
@@ -861,7 +885,7 @@ function MonthView({
           ) : (
             <div
               className={`rounded-xl overflow-hidden ring-1 divide-y divide-gray-800/50
-                ${isSameDay(selectedDay, today) ? 'acc-ring acc-bg-faint' : 'ring-gray-800 bg-gray-900/40'}
+                ${isSameDay(selectedDay, today) ? 'acc-ring acc-bg-faint' : 'ring-gray-800 bg-surf-40'}
               `}
             >
               {selectedDayEvents.map(({ event, person, isGeneral }) => (
@@ -978,13 +1002,18 @@ function App() {
     }
   }, [weekOffset, isAuthorized, loading])
 
+  const applyThemeColor = (person: Person): Person => {
+    const c = theme.personColors[person.id as keyof typeof theme.personColors]
+    return c ? { ...person, color: c } : person
+  }
+
   const classifiedEvents = useMemo(
     () =>
       events.map(event => {
         const person = classifyEvent(event.summary ?? '')
-        return { event, person, isGeneral: isGeneralEvent(event.summary ?? '', person) }
+        return { event, person: applyThemeColor(person), isGeneral: isGeneralEvent(event.summary ?? '', person) }
       }),
-    [events]
+    [events, theme] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const filteredEvents = useMemo(
@@ -1014,9 +1043,9 @@ function App() {
     () =>
       rawSearchEvents.map(event => {
         const person = classifyEvent(event.summary ?? '')
-        return { event, person, isGeneral: isGeneralEvent(event.summary ?? '', person) }
+        return { event, person: applyThemeColor(person), isGeneral: isGeneralEvent(event.summary ?? '', person) }
       }),
-    [rawSearchEvents]
+    [rawSearchEvents, theme] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const filteredSearchEvents = useMemo(
@@ -1045,9 +1074,9 @@ function App() {
     () =>
       monthEvents.map(event => {
         const person = classifyEvent(event.summary ?? '')
-        return { event, person, isGeneral: isGeneralEvent(event.summary ?? '', person) }
+        return { event, person: applyThemeColor(person), isGeneral: isGeneralEvent(event.summary ?? '', person) }
       }),
-    [monthEvents]
+    [monthEvents, theme] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const filteredMonthEvents = useMemo(
@@ -1081,9 +1110,9 @@ function App() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+    <div className="min-h-screen bg-base text-gray-100 flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-gray-800 bg-gray-950/95 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-gray-800 bg-base-95 backdrop-blur">
         <div className="px-4 py-3 flex items-center justify-between">
           <h1 className="text-lg font-bold acc-text">ניהול הבית</h1>
           <div className="flex items-center gap-2">
@@ -1211,7 +1240,7 @@ function App() {
         {isAuthorized && !isSearchOpen && (
           <>
             {/* View toggle */}
-            <div className="flex bg-gray-900 rounded-xl p-0.5">
+            <div className="flex bg-surf rounded-xl p-0.5">
               <button
                 onClick={switchToWeek}
                 className={`flex-1 py-1.5 text-sm rounded-lg transition-colors ${

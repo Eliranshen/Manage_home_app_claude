@@ -20,13 +20,26 @@
   }
 }
 
-/* ── Theme accent tokens ──────────────────────────────────────────────────── */
-:root                     { --acc: 99 102 241; }   /* indigo (default) */
-html[data-theme="blue"]   { --acc: 59 130 246; }
-html[data-theme="teal"]   { --acc: 20 184 166; }
-html[data-theme="rose"]   { --acc: 244 63 94;  }
+/* ── Theme tokens (applied via html[data-theme] set by ThemePicker) ──────── */
+:root {
+  --acc:  99 102 241;   /* accent  – indigo (night default) */
+  --bg:   3  7  18;     /* base background */
+  --surf: 17 24 39;     /* card / surface */
+}
+html[data-theme="ocean"]   { --acc: 56 189 248; --bg:  2 10 30; --surf:  7 20 50; }
+html[data-theme="forest"]  { --acc: 52 211 153; --bg:  3 12  8; --surf:  8 26 15; }
+html[data-theme="crimson"] { --acc: 251 113 133; --bg: 15  4  4; --surf: 30  8  8; }
+html[data-theme="purple"]  { --acc: 167 139 250; --bg:  8  5 18; --surf: 18 12 38; }
 
-/* Accent utility classes (unlayered → always win over Tailwind utilities) */
+/* ── Background & surface utilities ─────────────────────────────────────── */
+body { background-color: rgb(var(--bg)); }
+
+.bg-base    { background-color: rgb(var(--bg)); }
+.bg-base-95 { background-color: rgb(var(--bg) / 0.95); }
+.bg-surf    { background-color: rgb(var(--surf)); }
+.bg-surf-40 { background-color: rgb(var(--surf) / 0.40); }
+
+/* ── Accent utilities (unlayered → always win over Tailwind) ─────────────── */
 .acc-ring        { --tw-ring-color: rgb(var(--acc)); }
 .acc-bg          { background-color: rgb(var(--acc)); }
 .acc-bg-faint    { background-color: rgb(var(--acc) / 0.10); }
